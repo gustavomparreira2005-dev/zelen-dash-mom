@@ -25,7 +25,7 @@ def main() -> int:
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
                                       errors="replace", line_buffering=True)
     ap = argparse.ArgumentParser(description="Momentum FIIs tijolo — Zelen")
-    ap.add_argument("--liq-min", type=float, default=300_000.0, help="liquidez mínima R$/dia")
+    ap.add_argument("--liq-min", type=float, default=50_000.0, help="liquidez mínima R$/dia")
     ap.add_argument("--out", type=Path, default=Path("relatorios/momentum_fii.html"))
     args = ap.parse_args()
     t0 = time.time()
