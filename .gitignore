@@ -7,6 +7,8 @@ _cache_sec/
 _cache_fii/
 _cache_t/
 _cache_bt_*/
+_cache_us_bt_*/
+_cache*bt*/
 http_cache.sqlite
 *.sqlite
 
