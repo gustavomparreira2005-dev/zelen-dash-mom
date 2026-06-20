@@ -448,6 +448,8 @@ def _linhas(itens: List[Dict]) -> str:
             f' data-roe="{_data_num(roe)}"'
             f' data-divliqpl="{_data_num(dlpl)}"'
             f' data-tir5a="{_data_num(tir5a)}"'
+            f' data-mayer="{_data_num(e.get("score_mayer"))}"'
+            f' data-comp="{_data_num(e.get("score_compounder"))}"'
             f' data-setor="{_esc(e.get("segmento") or "")}"'
         )
         _setor = (e.get("segmento") or "").strip()
@@ -518,6 +520,8 @@ _INDICADORES = [
     ("roe",      "ROE (%)",              "%"),
     ("divliqpl", "Dív.Líq/PL",           "x"),
     ("tir5a",    "TIR 5a (%)",           "%"),
+    ("mayer",    "Mayer 100B (0-100)",   ""),
+    ("comp",     "Compounder+tend. (0-100)", ""),
 ]
 
 

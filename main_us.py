@@ -46,6 +46,23 @@ def _rd_us(nd, ebitda):
     return RF + spr
 
 
+def _score_mayer(roic_pct, cagr_pct, mkt_usd, pl):
+    """Score 100-Bagger (Mayer), 0-100 — DNA de compounder com runway.
+    Twin engines (ROIC + crescimento) + tamanho (espaço p/ multiplicar) + entrada sã."""
+    if roic_pct is None or cagr_pct is None or not mkt_usd:
+        return None
+    roic, g, mkt = roic_pct / 100.0, cagr_pct / 100.0, mkt_usd / 1e9
+    s_roic = (35 if roic >= 0.25 else 28 if roic >= 0.18 else 18 if roic >= 0.12
+              else 8 if roic >= 0.08 else 0)                          # motor 1
+    s_g = (30 if g >= 0.25 else 24 if g >= 0.15 else 16 if g >= 0.10
+           else 8 if g >= 0.05 else 0)                                # motor 2 (reinvestimento realizado)
+    s_size = (20 if mkt < 2 else 16 if mkt < 10 else 11 if mkt < 30   # runway
+              else 6 if mkt < 100 else 2)
+    s_val = (15 if (pl and 0 < pl < 25) else 10 if (pl and pl < 40)   # entrada razoável
+             else 5 if (pl and pl < 60) else 2)
+    return s_roic + s_g + s_size + s_val
+
+
 def _cagr(serie):
     s = [x for x in serie if x and x > 0]
     if len(s) < 2:
@@ -155,6 +172,17 @@ def main() -> int:
         d["roe"] = d["_ind"].get("roe")
         d["div_liq_pl"] = (nd / c["pl"]) if (nd is not None and c.get("pl") and c["pl"] > 0) else None
         d["liq_2m"] = _liq_mediana(s) if (s and s.ok) else None
+        # Score Mayer/100B (ROIC + crescimento + runway + entrada) e combo com Minervini (B)
+        d["score_mayer"] = _score_mayer(d["_ind"].get("roic"), d.get("cagr3_norm"), mkt, d.get("pl"))
+        # Um compounder não tem patrimônio negativo (recompra) nem é cíclico no pico —
+        # reusa o anti-armadilha pra barrar esses do ranking 100B.
+        _tf = " · ".join(d.get("trap_flags") or [])
+        if "distorcido" in _tf or "pico" in _tf:
+            d["score_mayer"] = None
+        if d["score_mayer"] is not None and d.get("score_tecnico") is not None:
+            d["score_compounder"] = round(0.6 * d["score_mayer"] + 0.4 * (d["score_tecnico"] / 42 * 100))
+        else:
+            d["score_compounder"] = None
 
     # ── Valuation (FCFF geral · FCFE financeiras · constantes US) ──────────────
     step("VALUATION", "Computando modelos (FCFF/FCFE · 5 anos · constantes US)…")
