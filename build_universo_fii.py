@@ -49,12 +49,15 @@ def _norm(x: str) -> str:
                    if not unicodedata.combining(c))
 
 
-# Override CNPJ→ticker para os grandes que NÃO trazem ISIN no informe (Res. 175).
+# Override CNPJ→ticker: para os grandes sem ISIN no informe (Res. 175) E para
+# fundos cujo ISIN deriva o ticker errado (mudaram de código; ex.: RB Capital
+# Renda I tem ISIN BRHUSC… mas negocia como FIIP11). Tem prioridade sobre o ISIN.
 _CURADO_CNPJ = {
     "11.728.688/0001-47": "HGLG11", "11.839.593/0001-09": "BTLG11",
     "12.005.956/0001-65": "KNRI11", "28.757.546/0001-00": "XPML11",
     "17.554.274/0001-25": "VISC11", "26.502.794/0001-85": "XPLG11",
     "24.853.044/0001-22": "VILG11", "08.431.747/0001-06": "HGBS11",
+    "08.696.175/0001-97": "FIIP11",   # ISIN deriva HUSC11 (errado) — RB Capital Renda I
 }
 
 

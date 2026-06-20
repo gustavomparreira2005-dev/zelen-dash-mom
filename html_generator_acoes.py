@@ -428,6 +428,8 @@ def _linhas(itens: List[Dict]) -> str:
         dlpl  = e.get("div_liq_pl")
         _tir  = e.get("val_tir")
         tir5a = _tir * 100 if _tir is not None else None   # fração → % p/ exibição
+        plnorm = e.get("pl_norm")     # P/L sobre lucro normalizado (média 5a)
+        trapf = e.get("trap_flags") or []
 
         # data-attrs (decimal '.') para sort/filtro client-side
         attrs = (
@@ -440,6 +442,7 @@ def _linhas(itens: List[Dict]) -> str:
             f' data-mktcap="{_data_num(mkt, 1e9)}"'
             f' data-evebitda="{_data_num(ev)}"'
             f' data-pl="{_data_num(pl)}"'
+            f' data-plnorm="{_data_num(plnorm)}"'
             f' data-crescqoq="{_data_num(cqoq)}"'
             f' data-liq2m="{_data_num(liq, 1e6)}"'
             f' data-roe="{_data_num(roe)}"'
@@ -448,6 +451,8 @@ def _linhas(itens: List[Dict]) -> str:
             f' data-setor="{_esc(e.get("segmento") or "")}"'
         )
         _setor = (e.get("segmento") or "").strip()
+        trap_mark = (f'<span class="trap" title="{_esc(" · ".join(trapf))}">⚠</span>'
+                     if trapf else "")
 
         if inv:
             cel_tot = f'<span class="inv-msg">{_esc(inv)}</span>'
@@ -460,7 +465,7 @@ def _linhas(itens: List[Dict]) -> str:
         rows.append(
             f'<tr class="row"{attrs} onclick="tog(this)">'
             f'<td class="rank">{rank}</td>'
-            f'<td class="l"><span class="tk">{_esc(e["ticker"])}</span><br>'
+            f'<td class="l"><span class="tk">{_esc(e["ticker"])}{trap_mark}</span><br>'
             f'<span class="nm">{_esc((e.get("nome") or "")[:26])}</span></td>'
             f'<td class="l setor-cel">{_esc(_setor) or "—"}</td>'
             f'<td>{cel_tot}</td>'
@@ -469,20 +474,21 @@ def _linhas(itens: List[Dict]) -> str:
             f'<td>{_cel_mktcap(mkt)}</td>'
             f'<td>{_cel_mult(ev)}</td>'
             f'<td>{_cel_mult(pl)}</td>'
+            f'<td>{_cel_mult(plnorm)}</td>'
             f'<td>{_cel_pct(cqoq, sinal=True)}</td>'
             f'<td>{_cel_liq(liq)}</td>'
             f'<td>{_cel_pct(roe)}</td>'
             f'<td>{_cel_mult(dlpl)}</td>'
             f'<td>{_cel_pct(tir5a, sinal=True)}</td>'
             f'</tr>'
-            f'<tr class="det" id="{rid}"><td colspan="14"><div class="det-inner">'
+            f'<tr class="det" id="{rid}"><td colspan="15"><div class="det-inner">'
             + (f'<div class="bloco-det"><span class="inv-msg">{_esc(inv)}</span></div><div></div>'
                if inv else _det_op(e) + _det_tec(e))
             + '</div></td></tr>'
         )
 
     if not rows:
-        return ('<tr><td colspan="14" style="padding:20px;text-align:center;'
+        return ('<tr><td colspan="15" style="padding:20px;text-align:center;'
                 'color:var(--text-mut)">Sem dados.</td></tr>')
     return "".join(rows)
 
@@ -506,6 +512,7 @@ _INDICADORES = [
     ("mktcap",   "Mkt Cap (R$ bi)",      "bi"),
     ("evebitda", "EV/EBITDA",            "x"),
     ("pl",       "P/L",                  "x"),
+    ("plnorm",   "P/L norm. (média 5a)", "x"),
     ("crescqoq", "CAGR 3a norm. (%)", "%"),
     ("liq2m",    "Liquidez 2m (R$ mi)",  "mi"),
     ("roe",      "ROE (%)",              "%"),
@@ -660,6 +667,11 @@ def gerar_relatorio(itens: List[Dict], output_path: Path, pais: str = "BR") -> P
     opt_setor = '<option value="">Segmento: todos</option>' + "".join(
         f'<option value="{_esc(s)}">{_esc(s)}</option>' for s in setores
     )
+    # Chips de EXCLUSÃO de setor (clique p/ remover o setor da lista)
+    chips_excl = "".join(
+        f'<span class="xsec" data-s="{_esc(s)}" onclick="toggleExcl(this)">{_esc(s)}</span>'
+        for s in setores
+    )
 
     cabecalho = (
         '<th class="sortable" data-key="ticker" onclick="sortBy(\'ticker\')" '
@@ -672,6 +684,7 @@ def gerar_relatorio(itens: List[Dict], output_path: Path, pais: str = "BR") -> P
         + _th("Mkt Cap", "mktcap")
         + _th("EV/EBITDA", "evebitda", "anual. tri")
         + _th("P/L", "pl", "anual. tri")
+        + _th("P/L norm", "plnorm", "média 5a")
         + _th("CAGR 3a", "crescqoq", "norm. anti-M&amp;A")
         + _th("Liq. 2m", "liq2m", f"{cur}/dia")
         + _th("ROE", "roe")
@@ -707,10 +720,19 @@ function pass(r){
   }
   var fs=document.getElementById('fsetor');
   if(fs&&fs.value&&(r.dataset.setor||'')!==fs.value)return false;
+  if(exclSet[r.dataset.setor||''])return false;        // setor excluído via chip
   var q=document.getElementById('q').value.trim().toUpperCase();
   if(q){var t=((r.dataset.ticker||'')+' '+(r.dataset.nome||'')).toUpperCase();if(t.indexOf(q)<0)return false;}
   return true;
 }
+var exclSet={};
+function toggleExcl(el){var s=el.dataset.s;
+  if(exclSet[s]){delete exclSet[s];el.classList.remove('off');}
+  else{exclSet[s]=1;el.classList.add('off');}
+  render();}
+function limparExcl(){exclSet={};
+  document.querySelectorAll('.xsec.off').forEach(function(e){e.classList.remove('off');});
+  render();}
 function render(){
   var rs=allRows();
   if(sortKey){
@@ -1141,7 +1163,15 @@ window.onload=function(){updUnit();render();};
         '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
         f'<title>Screener {"EUA" if is_us else "Brasil"} · Zelen Invest</title>'
         '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'
-        f'<style>{_CSS}</style></head><body>'
+        f'<style>{_CSS}'
+        '.excl-build{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:9px;}'
+        '.excl-lbl{font-size:11px;color:var(--text-mut);font-weight:700;margin-right:3px;}'
+        '.xsec{font-size:10px;padding:3px 9px;border-radius:11px;border:1px solid var(--marrom);'
+        'cursor:pointer;color:var(--marrom);user-select:none;background:transparent;white-space:nowrap;}'
+        '.xsec.off{background:var(--verm);color:#fff;border-color:var(--verm);text-decoration:line-through;}'
+        '.xsec-clear{font-size:10px;color:var(--text-mut);cursor:pointer;text-decoration:underline;margin-left:6px;}'
+        '.trap{margin-left:5px;cursor:help;font-size:11px;filter:saturate(1.4);}'
+        '</style></head><body>'
         f'<script>var CUR="{cur}";</script>'
         '<header class="top"><div class="wrap">'
         f'<h1>Momentum {"🇺🇸 EUA" if is_us else "🇧🇷 Brasil"} <span>· Zelen Invest</span></h1>'
@@ -1168,7 +1198,10 @@ window.onload=function(){updUnit();render();};
         '<button class="btn" onclick="addFilter()">+ Filtro</button>'
         f'<select id="fsetor" class="fsetor" onchange="render()">{opt_setor}</select>'
         '<input id="q" class="q" placeholder="buscar ticker ou nome…" oninput="render()">'
-        '</div><div id="chips" class="chips"></div></div>'
+        '</div>'
+        f'<div class="excl-build"><span class="excl-lbl">Excluir setores:</span>{chips_excl}'
+        '<span class="xsec-clear" onclick="limparExcl()">limpar</span></div>'
+        '<div id="chips" class="chips"></div></div>'
         f'<table><thead><tr>{cabecalho}</tr></thead><tbody id="tb">'
         f'{_linhas(itens)}'
         '</tbody></table>'

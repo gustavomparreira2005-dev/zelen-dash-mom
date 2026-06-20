@@ -152,7 +152,70 @@ def calcular_indicadores_us(ticker: str, as_of: Optional[str] = None) -> Dict:
         res.update(calcular_score_operacional_financeira(res_fin))
     else:
         res.update(_score_operacional_us(c, series))
+
+    _normalizar_e_flags(res, c, usa_fcfe, sic)
     return res
+
+
+def _normalizar_e_flags(res: Dict, c: Dict, usa_fcfe: bool, sic: str) -> None:
+    """Lucro NORMALIZADO (média de margem/ROE de ~5 anos) + flags de armadilha.
+
+    Cíclicas (energia, seguro, ovos, aérea) mostram P/L baixo no PICO do ciclo — o
+    lucro normalizado revela o quão 'barato' some quando o lucro reverte à média."""
+    h = res["historico_brutos"]
+    rec, ll, pl, ebit = h["receita"], h["lucro_liq"], h["pl"], h["ebit"]
+    ll_atual = c.get("lucro_liq")
+    flags: List[str] = []
+    lucro_norm = pico = None
+
+    prejuizo_hist = False
+    if usa_fcfe:
+        roes = [ll[i] / pl[i] for i in range(len(ll))
+                if ll[i] is not None and pl[i] and pl[i] > 0]
+        roe_med = sum(roes) / len(roes) if roes else None
+        pl_atual = c.get("pl")
+        if roe_med is not None and roe_med <= 0:
+            prejuizo_hist = True
+        if roe_med and roe_med > 0 and pl_atual and pl_atual > 0:
+            lucro_norm = roe_med * pl_atual
+            roe_at = (ll_atual / pl_atual) if ll_atual is not None else None
+            pico = (roe_at / roe_med) if (roe_at and roe_med > 0) else None
+    else:
+        margs = [ll[i] / rec[i] for i in range(len(ll))
+                 if ll[i] is not None and rec[i] and rec[i] > 0]
+        marg_med = sum(margs) / len(margs) if margs else None
+        rec_atual = c.get("receita")
+        if marg_med is not None and marg_med <= 0:
+            prejuizo_hist = True
+        if marg_med is not None and marg_med > 0 and rec_atual and rec_atual > 0:
+            lucro_norm = marg_med * rec_atual
+            marg_at = (ll_atual / rec_atual) if ll_atual is not None else None
+            pico = (marg_at / marg_med) if (marg_at and marg_med > 0) else None
+
+    # ── Flags de armadilha ─────────────────────────────────────────────────────
+    pl_atual = c.get("pl")
+    if (pl_atual is not None and pl_atual <= 0) or (ll_atual is not None and pl_atual and ll_atual / pl_atual < 0):
+        flags.append("patrimônio/ROE distorcido")
+    if pico is not None and pico > 1.30:
+        flags.append(f"lucro de pico ({pico:.1f}× a média 5a)")
+    if prejuizo_hist:
+        flags.append("histórico com prejuízo (lucro instável)")
+    try:
+        sic_i = int(sic)
+        if sic_i == 6798 or 6500 <= sic_i <= 6599:
+            flags.append("REIT — lucro contábil não representa (ver FFO)")
+    except (TypeError, ValueError):
+        pass
+    # Alavancagem só faz sentido p/ não-financeiras (banco/seguro têm float/reservas,
+    # não dívida operacional — ND/EBITDA é espúrio para elas).
+    nd, ebitda = c.get("net_debt"), (c.get("ebit") or 0) + (c.get("da") or 0)
+    if not usa_fcfe and nd is not None and ebitda and ebitda > 0 and nd / ebitda > 4.0:
+        flags.append(f"alavancagem alta (ND/EBITDA {nd/ebitda:.1f}×)")
+
+    res["lucro_norm"] = lucro_norm
+    res["pico_ratio"] = pico
+    res["trap_flags"] = flags
+    return
 
 
 if __name__ == "__main__":

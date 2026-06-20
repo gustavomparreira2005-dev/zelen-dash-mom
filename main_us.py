@@ -29,6 +29,7 @@ def ok(msg=""): return f"{G}OK{R}" + (f" — {msg}" if msg else "")
 
 # Constantes de mercado US (editáveis)
 RF, ERP, TAX = 0.043, 0.05, 0.21       # 10y UST · ERP maduro · imposto federal
+G_PERP_US = 0.025                       # crescimento perpétuo nominal US (~inflação 2%)
 WACC_LO, WACC_HI = 0.05, 0.14
 RE_LO, RE_HI = 0.06, 0.16
 BETA_LO, BETA_HI = 0.6, 1.8
@@ -104,6 +105,9 @@ def main() -> int:
             "cagr3_norm": (_cagr(res.get("historico_brutos", {}).get("receita", [])) or 0) * 100 or None,
             "_c": c, "_ind": res.get("ind", {}),
             "_hist_rec": res.get("historico_brutos", {}).get("receita", []),
+            "_lucro_norm": res.get("lucro_norm"),       # lucro normalizado (média 5a) p/ P/L norm.
+            "pico_ratio": res.get("pico_ratio"),         # lucro atual ÷ normalizado
+            "trap_flags": res.get("trap_flags") or [],   # armadilhas (pico, book neg., REIT, alav.)
             **{k: res.get(k) for k in ("a1", "a2", "a3", "a4", "a5", "score_operacional",
                                        "det_a1", "det_a2", "det_a3", "det_a4", "det_a5", "invalido")},
         }
@@ -145,6 +149,9 @@ def main() -> int:
         d["mkt_cap"] = mkt
         d["ev_ebitda"] = ((mkt + (nd or 0.0)) / ebitda) if (mkt and ebitda and ebitda > 0) else None
         d["pl"] = (mkt / c["lucro_liq"]) if (mkt and c.get("lucro_liq") and c["lucro_liq"] > 0) else None
+        # P/L normalizado: market cap ÷ lucro normalizado (média 5a) — revela "barato de pico"
+        ln = d.pop("_lucro_norm", None)
+        d["pl_norm"] = (mkt / ln) if (mkt and ln and ln > 0) else None
         d["roe"] = d["_ind"].get("roe")
         d["div_liq_pl"] = (nd / c["pl"]) if (nd is not None and c.get("pl") and c["pl"] > 0) else None
         d["liq_2m"] = _liq_mediana(s) if (s and s.ok) else None
@@ -176,6 +183,7 @@ def main() -> int:
                             lucro_liq_ltm=c["lucro_liq"] / MI, pl=c["pl"] / MI,
                             roe=(roe / 100.0) if roe is not None else None, cagr_hist=cagr)
                 p = premissas_default_fcfe(a)
+                p.g_perp = G_PERP_US          # inflação US ~2% (não os 5% do default BR)
                 p.taxa_desconto = round(_clamp(RF + beta_use * ERP, RE_LO, RE_HI), 4)
                 r = calcular_valuation_fcfe(a, p)
                 d["val_modelo"] = "FCFE"
@@ -199,6 +207,7 @@ def main() -> int:
                     cogs_ltm=(c.get("custo_vendas") or 0.0) / MI)
                 p = premissas_default(a)
                 p.tax = TAX
+                p.g_perp = G_PERP_US          # inflação US ~2% (não os 5% do default BR)
                 w = calcular_wacc(preco * n_acoes, nd if nd > 0 else 0.0, beta_use,
                                   rf=RF, erp=ERP, custo_divida=_rd_us(nd, ebitda / MI), tax=TAX)
                 p.taxa_desconto = round(_clamp(w.wacc, WACC_LO, WACC_HI), 4)
