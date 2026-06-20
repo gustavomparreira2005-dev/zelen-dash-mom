@@ -1,0 +1,49 @@
+# Cache CVM (ZIPs e extrações — pesados, baixados on-demand)
+cache_cvm/
+_cache/
+# Caches dos novos pipelines (US/SEC ~5.5GB, FII, backtests, etc.)
+_cache_us/
+_cache_sec/
+_cache_fii/
+_cache_t/
+_cache_bt_*/
+http_cache.sqlite
+*.sqlite
+
+# Relatórios gerados (HTML grandes, regenerados pelo pipeline)
+relatorios/
+zelen_landing_deploy/
+
+# Backtests — outputs gerados (fontes .py são versionadas)
+backtests/*.csv
+backtests/*.html
+backtests/*.txt
+
+# Empresas manuais — dados de entrada do usuário (não versionar dados confidenciais)
+empresas_manuais/**/*.xlsx
+!empresas_manuais/templates/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dados sensíveis / temporários
+*.log
+*.tmp
+
+# Documentos pesados / copyright
+docs/Credit Investor Handbook.pdf
+
+# Dados de mercado (Excel pesados, baixados manualmente)
+IDEX-Infra\ Spread\ Historico.xlsx
+
+# Landing page gerada (build_landing.py → zelen_landing.html)
+zelen_landing.html

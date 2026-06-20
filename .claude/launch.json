@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "screener",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8732", "--directory", "relatorios"],
+      "port": 8732
+    }
+  ]
+}
