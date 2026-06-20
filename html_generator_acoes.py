@@ -1129,8 +1129,9 @@ window.onload=function(){updUnit();render();};
                 f'color:{col};border:1px solid var(--marrom);">{label}</a>')
     seletor = (
         '<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">'
-        + _pill("🇧🇷 Brasil", "momentum_acoes.html", not is_us)
+        + _pill("🇧🇷 Ações", "momentum_acoes.html", not is_us)
         + _pill("🇺🇸 EUA", "momentum_us.html", is_us)
+        + _pill("🏢 FIIs", "momentum_fii.html", False)
         + f'<span style="font-size:11px;color:rgba(243,229,208,.6);margin-left:8px">'
           f'<b id="cnt">{n_total}</b> ações · {moeda_nome} · {ts}</span>'
         + '</div>'
