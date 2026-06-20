@@ -49,32 +49,70 @@ def _norm(x: str) -> str:
                    if not unicodedata.combining(c))
 
 
+# Override CNPJ→ticker para os grandes que NÃO trazem ISIN no informe (Res. 175).
+_CURADO_CNPJ = {
+    "11.728.688/0001-47": "HGLG11", "11.839.593/0001-09": "BTLG11",
+    "12.005.956/0001-65": "KNRI11", "28.757.546/0001-00": "XPML11",
+    "17.554.274/0001-25": "VISC11", "26.502.794/0001-85": "XPLG11",
+    "24.853.044/0001-22": "VILG11", "08.431.747/0001-06": "HGBS11",
+}
+
+
+def _seg_por_nome(nome: str) -> str:
+    n = _norm(nome)
+    if any(k in n for k in ("LOG", "GALPAO", "INDUSTRIAL")):
+        return "Logística"
+    if any(k in n for k in ("SHOPPING", "MALL", "VAREJO")):
+        return "Shopping/Varejo"
+    if any(k in n for k in ("CORPORAT", "OFFICE", "LAJE", "ESCRITORIO")):
+        return "Lajes"
+    if any(k in n for k in ("RENDA URBANA", "URBAN")):
+        return "Renda Urbana"
+    if any(k in n for k in ("HOSPITAL", "SAUDE", "EDUC", "HOTEL", "AGENC", "BANCO")):
+        return "Renda/Especial"
+    return "Tijolo (outros)"
+
+
 def main() -> int:
-    print("Carregando base CVM-FII (2024-2025)…")
-    base = carregar_fiis([2024, 2025])
-    idx = [(k, v, _norm(v.nome)) for k, v in base.items()]
-    linhas = []
-    nao_achou = []
-    for ticker, frag, seg in _CURADOS:
-        fragn = _norm(frag)
-        cands = [(k, v) for k, v, nm in idx if fragn in nm]
-        # prefere o tijolo de maior PL (descarta sub-classes/espelhos)
-        cands = [(k, v) for k, v in cands if classificar_tijolo(v)[0] in ("tijolo", "hibrido")]
-        cands.sort(key=lambda kv: -((kv[1].ultimo() or {}).get("pl") or 0))
-        if not cands:
-            nao_achou.append(ticker); continue
-        cnpj, fii = cands[0]
+    print("Carregando base CVM-FII (2021-2025)…")
+    base = carregar_fiis([2021, 2022, 2023, 2024, 2025])
+    norm_cnpj = lambda c: "".join(ch for ch in c if ch.isdigit())
+    cur = {norm_cnpj(k): v for k, v in _CURADO_CNPJ.items()}
+
+    linhas, sem_ticker = [], 0
+    for cnpj, fii in base.items():
         classe, frac = classificar_tijolo(fii)
+        if classe not in ("tijolo", "hibrido"):
+            continue
+        u = fii.ultimo() or {}
+        if (u.get("pl") or 0) < 50e6:           # corta micro-fundos (< R$50mi PL)
+            continue
+        ticker = cur.get(norm_cnpj(cnpj)) or fii.ticker_isin()
+        if not ticker:
+            sem_ticker += 1
+            continue
         linhas.append({"ticker": ticker, "cnpj": cnpj, "nome": fii.nome[:48],
-                       "segmento": seg, "classe": classe, "frac_imoveis": round(frac, 2)})
+                       "segmento": _seg_por_nome(fii.nome), "classe": classe,
+                       "frac_imoveis": round(frac, 2)})
+    # dedup por ticker (mantém o de maior PL)
+    by_tk = {}
+    for l in linhas:
+        cur_l = by_tk.get(l["ticker"])
+        pl = (base[l["cnpj"]].ultimo() or {}).get("pl") or 0
+        if not cur_l or pl > cur_l[1]:
+            by_tk[l["ticker"]] = (l, pl)
+    linhas = sorted((v[0] for v in by_tk.values()), key=lambda x: x["ticker"])
+
     out = Path("empresas_fii.csv")
     with out.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["ticker", "cnpj", "nome", "segmento", "classe", "frac_imoveis"])
         w.writeheader(); w.writerows(linhas)
-    print(f"\nResolvidos: {len(linhas)}/{len(_CURADOS)}  ·  não achou: {nao_achou}")
-    for l in linhas:
-        print(f"  {l['ticker']:8} {l['cnpj']} {l['classe']:8} {l['segmento']:13} {l['nome']}")
-    print(f"\nArquivo: {out.resolve()}")
+    from collections import Counter
+    seg = Counter(l["segmento"] for l in linhas)
+    print(f"\nTijolo/híbrido com ticker (PL≥50mi): {len(linhas)}  ·  sem ticker: {sem_ticker}")
+    for s, n in seg.most_common():
+        print(f"  {n:3}  {s}")
+    print(f"\nArquivo: {out.resolve()} (filtro final de liquidez é no main_fii)")
     return 0
 
 

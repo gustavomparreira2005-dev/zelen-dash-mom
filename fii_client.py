@@ -45,7 +45,13 @@ def _num(v: str) -> Optional[float]:
 class FiiData:
     cnpj: str
     nome: str = ""
+    isin: str = ""
     serie: List[dict] = field(default_factory=list)   # mensal, ordenado por data
+
+    def ticker_isin(self) -> Optional[str]:
+        """Ticker derivado do ISIN (BR**XXXX**CTF00n → XXXX11). None se sem ISIN."""
+        z = (self.isin or "").strip().upper()
+        return (z[2:6] + "11") if len(z) >= 6 and z.startswith("BR") else None
 
     def ultimo(self) -> Optional[dict]:
         return self.serie[-1] if self.serie else None
@@ -88,6 +94,7 @@ def carregar_fiis(anos: List[int], force: bool = False) -> Dict[str, FiiData]:
     # acumula por (cnpj, data) juntando os 3 arquivos
     acc: Dict[Tuple[str, str], dict] = {}
     nomes: Dict[str, str] = {}
+    isins: Dict[str, str] = {}
     for ano in sorted(anos):
         raw = _baixar_zip(ano, force)
         if not raw:
@@ -100,6 +107,9 @@ def carregar_fiis(anos: List[int], force: bool = False) -> Dict[str, FiiData]:
             cnpj = (r.get("CNPJ_Fundo_Classe") or r.get("CNPJ_Fundo") or "").strip()
             if cnpj:
                 nomes[cnpj] = r.get("Nome_Fundo_Classe") or r.get("Nome_Fundo") or nomes.get(cnpj, "")
+                iz = (r.get("Codigo_ISIN") or "").strip()
+                if iz:
+                    isins[cnpj] = iz
         for r in comp:
             cnpj = (r.get("CNPJ_Fundo_Classe") or r.get("CNPJ_Fundo") or "").strip()
             dt = (r.get("Data_Referencia") or "").strip()
@@ -122,6 +132,9 @@ def carregar_fiis(anos: List[int], force: bool = False) -> Dict[str, FiiData]:
                 _num(r.get("Outros_Direitos_Reais")), _num(r.get("Direitos_Bens_Imoveis")),
             ])) or 0.0
             papel = sum(filter(None, [
+                # CRIs e títulos de renda fixa — o lado "papel" (estava faltando!):
+                _num(r.get("Titulos_Privados")),      # CRIs (principal ativo de fundo de papel)
+                _num(r.get("Titulos_Publicos")), _num(r.get("Fundos_Renda_Fixa")),
                 _num(r.get("Certificados_Deposito_Valores_Mobiliarios")),
                 _num(r.get("Outras_Cotas_FI")), _num(r.get("Cotas_Sociedades_Atividades_FII")),
                 _num(r.get("Outros_Valores_Mobliarios")),
@@ -136,21 +149,25 @@ def carregar_fiis(anos: List[int], force: bool = False) -> Dict[str, FiiData]:
         series.setdefault(cnpj, []).append(d)
     for cnpj, lst in series.items():
         lst.sort(key=lambda x: x["data"])
-        por_cnpj[cnpj] = FiiData(cnpj=cnpj, nome=nomes.get(cnpj, ""), serie=lst)
+        por_cnpj[cnpj] = FiiData(cnpj=cnpj, nome=nomes.get(cnpj, ""),
+                                 isin=isins.get(cnpj, ""), serie=lst)
     return por_cnpj
 
 
 def classificar_tijolo(fii: FiiData) -> Tuple[str, float]:
-    """(classe, fração_imoveis). tijolo se imóveis > 60% do ativo investido."""
+    """(classe, imóveis/PL). Usa o PATRIMÔNIO LÍQUIDO como denominador (reportado de
+    forma confiável no complemento), não imóveis/(imóveis+papel) — porque os campos
+    de ativo vêm incompletos para muitos fundos de papel (ex.: MXRF mostra R$18mi de
+    ativos num fundo de R$4bi). Imóveis sendo a maior parte do PL = tijolo de verdade."""
     u = fii.ultimo() or {}
-    imoveis, papel = u.get("imoveis") or 0.0, u.get("papel") or 0.0
-    tot = imoveis + papel
-    frac = (imoveis / tot) if tot > 0 else 0.0
-    if tot <= 0:
+    imoveis = u.get("imoveis") or 0.0
+    pl = u.get("pl") or 0.0
+    if pl <= 0:
         return "indef", 0.0
-    if frac >= 0.60:
+    frac = imoveis / pl
+    if frac >= 0.55:
         return "tijolo", frac
-    if frac <= 0.15:
+    if frac <= 0.20:
         return "papel", frac
     return "hibrido", frac
 
