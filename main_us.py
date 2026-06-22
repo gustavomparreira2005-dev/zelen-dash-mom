@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import math
 import sys
 import time
 from pathlib import Path
@@ -63,6 +64,47 @@ def _score_mayer(roic_pct, cagr_pct, mkt_usd, pl):
     return s_roic + s_g + s_size + s_val
 
 
+def _vol_anual(closes):
+    """Vol anualizada dos retornos diários (winsorizada a ±15%/dia)."""
+    cl = [c for c in closes if c]
+    if len(cl) < 60:
+        return None
+    r = [max(-0.15, min(0.15, math.log(cl[i] / cl[i-1]))) for i in range(1, len(cl)) if cl[i] and cl[i-1] and cl[i-1] > 0]
+    if len(r) < 40:
+        return None
+    m = sum(r) / len(r)
+    return (sum((x - m) ** 2 for x in r) / (len(r) - 1)) ** 0.5 * math.sqrt(252)
+
+
+def _score_boring(bm, vol, flags):
+    """Boring buy & hold (0-100): qualidade durável + consistência + baixa vol +
+    baixa alavancagem + crescimento firme. Cíclica/pico/prejuízo NÃO é boring."""
+    if not bm or bm.get("roe_med") is None:
+        return None
+    tf = " · ".join(flags or [])
+    if "pico" in tf or "distorcido" in tf or "prejuízo" in tf:
+        return None
+    roe, rcv, mcv = bm["roe_med"], bm.get("roe_cv"), bm.get("marg_cv")
+    # qualidade durável (ROE alto E estável) 0-30
+    sq = (18 if roe >= 0.12 else 10 if roe >= 0.08 else 4 if roe > 0 else 0)
+    sq += (12 if (rcv is not None and rcv < 0.3) else 6 if (rcv is not None and rcv < 0.6) else 0)
+    # consistência (lucro todo ano + margem estável) 0-25
+    sc = (13 if bm.get("anos_lucro") == 1.0 else 8 if (bm.get("anos_lucro") or 0) >= 0.8 else 0)
+    sc += (12 if (mcv is not None and mcv < 0.2) else 6 if (mcv is not None and mcv < 0.4) else 0)
+    # baixa volatilidade 0-20
+    sv = (20 if vol and vol < 0.20 else 14 if vol and vol < 0.28 else 8 if vol and vol < 0.38 else 3) if vol else 8
+    # baixa alavancagem 0-15
+    nde = bm.get("nd_ebitda")
+    sl = (15 if (nde is not None and nde < 1) else 11 if (nde is not None and nde < 2)
+          else 6 if (nde is not None and nde < 3.5) else 2)
+    # crescimento firme 0-10 (sweet spot 3-15%; pune declínio e hipercrescimento)
+    g = bm.get("growth")
+    sg = (10 if (g is not None and 0.03 <= g <= 0.15) else
+          6 if (g is not None and (0 <= g < 0.03 or 0.15 < g <= 0.30)) else
+          2 if (g is not None and g > 0.30) else 0)
+    return round(min(sq, 30) + min(sc, 25) + sv + sl + sg)
+
+
 def _cagr(serie):
     s = [x for x in serie if x and x > 0]
     if len(s) < 2:
@@ -103,11 +145,14 @@ def main() -> int:
 
     # ── Fundamentos + score operacional (SEC) ─────────────────────────────────
     step("SEC", f"Carregando fundamentos de {len(universo)} empresas (EDGAR)…")
+    import gc
     todos: dict = {}
     px_list: list = []
     for i, row in enumerate(universo, 1):
         tk = row["ticker"].strip().upper()
         print(f"\r  {i}/{len(universo)}  {tk:<8}   ", end="", file=sys.stderr, flush=True)
+        if i % 150 == 0:
+            gc.collect()      # alívio de memória — os companyfacts da SEC são grandes (cache 5,5GB)
         try:
             res = calcular_indicadores_us(tk)
         except Exception:
@@ -125,6 +170,7 @@ def main() -> int:
             "_lucro_norm": res.get("lucro_norm"),       # lucro normalizado (média 5a) p/ P/L norm.
             "pico_ratio": res.get("pico_ratio"),         # lucro atual ÷ normalizado
             "trap_flags": res.get("trap_flags") or [],   # armadilhas (pico, book neg., REIT, alav.)
+            "_boring": res.get("boring"),                # métricas de estabilidade (modo boring)
             **{k: res.get(k) for k in ("a1", "a2", "a3", "a4", "a5", "score_operacional",
                                        "det_a1", "det_a2", "det_a3", "det_a4", "det_a5", "invalido")},
         }
@@ -179,6 +225,9 @@ def main() -> int:
         _tf = " · ".join(d.get("trap_flags") or [])
         if "distorcido" in _tf or "pico" in _tf:
             d["score_mayer"] = None
+        # Modo boring: vol anualizada da ação + score de durabilidade
+        d["vol_anual"] = _vol_anual(s.close) if (s and s.ok and s.close) else None
+        d["score_boring"] = _score_boring(d.pop("_boring", None), d["vol_anual"], d.get("trap_flags"))
         if d["score_mayer"] is not None and d.get("score_tecnico") is not None:
             d["score_compounder"] = round(0.6 * d["score_mayer"] + 0.4 * (d["score_tecnico"] / 42 * 100))
         else:

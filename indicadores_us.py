@@ -154,7 +154,39 @@ def calcular_indicadores_us(ticker: str, as_of: Optional[str] = None) -> Dict:
         res.update(_score_operacional_us(c, series))
 
     _normalizar_e_flags(res, c, usa_fcfe, sic)
+    _metricas_boring(res, c)
     return res
+
+
+def _metricas_boring(res: Dict, c: Dict) -> None:
+    """Métricas de durabilidade/estabilidade p/ o modo 'boring buy & hold' —
+    ROE médio e sua estabilidade (CV), consistência de margem, anos lucrativos,
+    alavancagem, conversão em caixa e crescimento (das séries anuais)."""
+    import statistics
+    h = res["historico_brutos"]
+    rec, ll, pl = h["receita"], h["lucro_liq"], h["pl"]
+    roes = [ll[i] / pl[i] for i in range(len(ll)) if ll[i] is not None and pl[i] and pl[i] > 0]
+    margs = [ll[i] / rec[i] for i in range(len(ll)) if ll[i] is not None and rec[i] and rec[i] > 0]
+    nll = [x for x in ll if x is not None]
+
+    def _cv(xs):
+        if len(xs) < 2:
+            return None
+        m = sum(xs) / len(xs)
+        return (statistics.pstdev(xs) / abs(m)) if m else None
+
+    recf = [x for x in rec if x and x > 0]
+    g = ((recf[-1] / recf[0]) ** (1 / (len(recf) - 1)) - 1) if len(recf) >= 2 else None
+    lucro, da, capex = c.get("lucro_liq"), c.get("da") or 0.0, c.get("capex") or 0.0
+    nd, ebitda = c.get("net_debt"), (c.get("ebit") or 0) + (c.get("da") or 0)
+    res["boring"] = {
+        "roe_med": (sum(roes) / len(roes)) if roes else None,
+        "roe_cv": _cv(roes), "marg_cv": _cv(margs),
+        "anos_lucro": (sum(1 for x in nll if x > 0) / len(nll)) if nll else None,
+        "fcf_conv": ((lucro + da - capex) / lucro) if (lucro and lucro > 0) else None,
+        "nd_ebitda": (nd / ebitda) if (nd is not None and ebitda and ebitda > 0) else None,
+        "growth": g,
+    }
 
 
 def _normalizar_e_flags(res: Dict, c: Dict, usa_fcfe: bool, sic: str) -> None:
