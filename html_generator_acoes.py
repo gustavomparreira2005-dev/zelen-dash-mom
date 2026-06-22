@@ -403,10 +403,19 @@ def _det_tec(e: Dict) -> str:
 
 # ─── Linhas da tabela ─────────────────────────────────────────────────────────
 
-def _linhas(itens: List[Dict]) -> str:
+def _cel_score(v) -> str:
+    """Célula de score de estratégia (0-100): número colorido por força."""
+    if v is None:
+        return '<span class="mut">—</span>'
+    c = "var(--verde-med)" if v >= 80 else "var(--marrom)" if v >= 60 else "var(--text-sec)"
+    return f'<b style="color:{c}">{v:.0f}</b>'
+
+
+def _linhas(itens: List[Dict], estrat: bool = False) -> str:
     # Ordena por score total desc (estado inicial; JS pode reordenar depois)
     ordenados = sorted(itens, key=lambda e: (e.get("score_total") is None,
                                               -(e.get("score_total") or 0)))
+    cspan = 18 if estrat else 15
     rows = []
     rank = 0
     for e in ordenados:
@@ -483,15 +492,18 @@ def _linhas(itens: List[Dict]) -> str:
             f'<td>{_cel_pct(roe)}</td>'
             f'<td>{_cel_mult(dlpl)}</td>'
             f'<td>{_cel_pct(tir5a, sinal=True)}</td>'
-            f'</tr>'
-            f'<tr class="det" id="{rid}"><td colspan="15"><div class="det-inner">'
+            + ((f'<td>{_cel_score(e.get("score_mayer"))}</td>'
+                f'<td>{_cel_score(e.get("score_compounder"))}</td>'
+                f'<td>{_cel_score(e.get("score_boring"))}</td>') if estrat else "")
+            + f'</tr>'
+            f'<tr class="det" id="{rid}"><td colspan="{cspan}"><div class="det-inner">'
             + (f'<div class="bloco-det"><span class="inv-msg">{_esc(inv)}</span></div><div></div>'
                if inv else _det_op(e) + _det_tec(e))
             + '</div></td></tr>'
         )
 
     if not rows:
-        return ('<tr><td colspan="15" style="padding:20px;text-align:center;'
+        return (f'<tr><td colspan="{cspan}" style="padding:20px;text-align:center;'
                 'color:var(--text-mut)">Sem dados.</td></tr>')
     return "".join(rows)
 
@@ -705,6 +717,8 @@ def gerar_relatorio(itens: List[Dict], output_path: Path, pais: str = "BR") -> P
         + _th("ROE", "roe")
         + _th("DL/PL", "divliqpl")
         + _th("TIR 5a", "tir5a", "DCF firma")
+        + ((_th("Mayer", "mayer", "100B") + _th("Comp.", "comp", "+tend.")
+            + _th("Boring", "boring", "buy&amp;hold")) if is_us else "")
     )
 
     n_val = sum(1 for e in itens if e.get("val_tir") is not None)
@@ -1186,6 +1200,9 @@ window.onload=function(){updUnit();render();};
         '.xsec.off{background:var(--verm);color:#fff;border-color:var(--verm);text-decoration:line-through;}'
         '.xsec-clear{font-size:10px;color:var(--text-mut);cursor:pointer;text-decoration:underline;margin-left:6px;}'
         '.trap{margin-left:5px;cursor:help;font-size:11px;filter:saturate(1.4);}'
+        '.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}'
+        '.tbl-scroll table{width:auto;min-width:100%;}'
+        '.tbl-scroll th,.tbl-scroll td{white-space:nowrap;}'
         '</style></head><body>'
         f'<script>var CUR="{cur}";</script>'
         '<header class="top"><div class="wrap">'
@@ -1218,9 +1235,10 @@ window.onload=function(){updUnit();render();};
         '<span class="xsec-clear" onclick="limparExcl()">limpar</span></div>'
         + sort_estrategia +
         '<div id="chips" class="chips"></div></div>'
+        '<div class="tbl-scroll">'
         f'<table><thead><tr>{cabecalho}</tr></thead><tbody id="tb">'
-        f'{_linhas(itens)}'
-        '</tbody></table>'
+        f'{_linhas(itens, is_us)}'
+        '</tbody></table></div>'
         '<div class="legend">'
         '<b>Scores</b>: Total 0-100 = A (operacional /60) + B (técnico /42). '
         'A = trajetória de crescimento (A1 nível · A2 consistência) → aceleração (A3) → qualidade do lucro (A4) → solidez (A5). '
