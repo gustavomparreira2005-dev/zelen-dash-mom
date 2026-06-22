@@ -702,7 +702,7 @@ def gerar_relatorio(itens: List[Dict], output_path: Path, pais: str = "BR") -> P
 
     cabecalho = (
         '<th class="sortable" data-key="ticker" onclick="sortBy(\'ticker\')" '
-        'style="text-align:left;width:30px">#</th>'
+        'style="text-align:left">#</th>'
         + _th("Ação", "ticker", l=True)
         + _th("Segmento", "setor", l=True)
         + _th("Total", "total", "/100")
@@ -1200,13 +1200,24 @@ window.onload=function(){updUnit();render();};
         '.xsec.off{background:var(--verm);color:#fff;border-color:var(--verm);text-decoration:line-through;}'
         '.xsec-clear{font-size:10px;color:var(--text-mut);cursor:pointer;text-decoration:underline;margin-left:6px;}'
         '.trap{margin-left:5px;cursor:help;font-size:11px;filter:saturate(1.4);}'
-        '.tbl-scroll{overflow-x:scroll;-webkit-overflow-scrolling:touch;scrollbar-width:auto;scrollbar-color:var(--marrom) #E7DcC6;}'
+        # Painel de altura fixa: rola na vertical DENTRO da caixa (cabeçalho sticky)
+        # e a barra HORIZONTAL fica fixa no rodapé visível — não lá embaixo após 1300 linhas.
+        '.tbl-scroll{overflow:auto;max-height:76vh;-webkit-overflow-scrolling:touch;'
+        'scrollbar-width:auto;scrollbar-color:var(--marrom) #E7DcC6;}'
         '.tbl-scroll table{width:auto;min-width:100%;}'
         '.tbl-scroll th,.tbl-scroll td{white-space:nowrap;}'
-        '.tbl-scroll::-webkit-scrollbar{height:14px;}'
+        '.tbl-scroll::-webkit-scrollbar{height:14px;width:14px;}'
         '.tbl-scroll::-webkit-scrollbar-track{background:#E7DcC6;border-radius:7px;}'
         '.tbl-scroll::-webkit-scrollbar-thumb{background:var(--marrom);border-radius:7px;border:3px solid #E7DcC6;}'
         '.tbl-scroll::-webkit-scrollbar-thumb:hover{background:var(--verde-esc,#284B23);}'
+        '.tbl-scroll::-webkit-scrollbar-corner{background:#E7DcC6;}'
+        # Congela # e Ação (ticker) na horizontal — ficam fixos enquanto rola lateralmente
+        '.tbl-scroll th:nth-child(1),.tbl-scroll td:nth-child(1){position:sticky;left:0;z-index:4;'
+        'background:var(--bg-card);box-sizing:border-box;width:42px;min-width:42px;max-width:42px;}'
+        '.tbl-scroll tr.row td:nth-child(2),.tbl-scroll thead th:nth-child(2){position:sticky;left:42px;'
+        'z-index:4;background:var(--bg-card);box-shadow:6px 0 6px -4px rgba(0,0,0,.12);}'
+        '.tbl-scroll thead th:nth-child(1),.tbl-scroll thead th:nth-child(2){z-index:7;}'
+        '.tbl-scroll tr.row:hover td:nth-child(1),.tbl-scroll tr.row:hover td:nth-child(2){background:#F7F2E8;}'
         '</style></head><body>'
         f'<script>var CUR="{cur}";</script>'
         '<header class="top"><div class="wrap">'
