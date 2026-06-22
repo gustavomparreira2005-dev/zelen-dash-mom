@@ -678,6 +678,15 @@ def gerar_relatorio(itens: List[Dict], output_path: Path, pais: str = "BR") -> P
         f'<span class="xsec" data-s="{_esc(s)}" onclick="toggleExcl(this)">{_esc(s)}</span>'
         for s in setores
     )
+    # Botões de ordenação por estratégia (US): Mayer/100B, Compounder+tend., Boring.
+    # A máquina de sort aceita qualquer data-attr; aqui só disparam sortBy().
+    sort_estrategia = (
+        '<div class="excl-build"><span class="excl-lbl">Ordenar estratégia:</span>'
+        '<span class="xsec" onclick="sortBy(\'mayer\')">🚀 Mayer 100B</span>'
+        '<span class="xsec" onclick="sortBy(\'comp\')">📈 Compounder+tendência</span>'
+        '<span class="xsec" onclick="sortBy(\'boring\')">🛋 Boring buy&amp;hold</span>'
+        '</div>'
+    ) if is_us else ''
 
     cabecalho = (
         '<th class="sortable" data-key="ticker" onclick="sortBy(\'ticker\')" '
@@ -1207,6 +1216,7 @@ window.onload=function(){updUnit();render();};
         '</div>'
         f'<div class="excl-build"><span class="excl-lbl">Excluir setores:</span>{chips_excl}'
         '<span class="xsec-clear" onclick="limparExcl()">limpar</span></div>'
+        + sort_estrategia +
         '<div id="chips" class="chips"></div></div>'
         f'<table><thead><tr>{cabecalho}</tr></thead><tbody id="tb">'
         f'{_linhas(itens)}'
